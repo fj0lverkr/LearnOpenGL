@@ -4,6 +4,7 @@
 
 #include "graphics/Color.hpp"
 #include <vector>
+#include <cmath>
 
 using namespace std;
 
@@ -14,24 +15,21 @@ const Color BG = Color(0.2f, 0.3f, 0.3f);
 
 const char *vss = "#version 330 core\n"
 				  "layout (location = 0) in vec3 aPos;\n"
+				  "layout (location = 1) in vec3 aColor;\n"
+				  "out vec3 ourColor;\n"
 				  "void main()\n"
 				  "{\n"
-				  "   gl_Position = vec4(aPos.x, aPos.y, aPos.z, 1.0);\n"
+				  "   gl_Position = vec4(aPos, 1.0);\n"
+				  "   ourColor = aColor;\n"
 				  "}\0";
 
-const char *fssOrange = "#version 330 core\n"
-						"out vec4 FragColor;\n"
-						"void main()\n"
-						"{\n"
-						"   FragColor = vec4(1.0f, 0.5f, 0.2f, 1.0f);\n"
-						"}\n\0";
-
-const char *fssYellow = "#version 330 core\n"
-						"out vec4 FragColor;\n"
-						"void main()\n"
-						"{\n"
-						"   FragColor = vec4(1.0f, 1.0f, 0.0f, 1.0f);\n"
-						"}\n\0";
+const char *fss = "#version 330 core\n"
+				  "out vec4 FragColor;\n"
+				  "in vec3 ourColor;\n"
+				  "void main()\n"
+				  "{\n"
+				  "   FragColor = vec4(ourColor, 1.0);\n"
+				  "}\n\0";
 
 vector<unsigned int> VAOs, VBOs, shaderPrograms;
 
@@ -146,11 +144,16 @@ void compileShader(const unsigned int &shader, const char *source, const string 
 	int success;
 	char infoLog[512];
 	glGetShaderiv(shader, GL_COMPILE_STATUS, &success);
+	glGetShaderInfoLog(shader, 512, NULL, infoLog);
 
 	if (!success)
 	{
-		glGetShaderInfoLog(shader, 512, NULL, infoLog);
 		std::cout << "ERROR::SHADER::" << name << "::COMPILATION_FAILED" << endl
+				  << infoLog << std::endl;
+	}
+	else
+	{
+		std::cout << "SUCCESS::SHADER::" << name << "::COMPILATION" << endl
 				  << infoLog << std::endl;
 	}
 }
@@ -166,10 +169,16 @@ void linkShaders(const unsigned int &vertexShader, const unsigned int &fragmentS
 	int success;
 	char infoLog[512];
 	glGetProgramiv(shaderProgram, GL_LINK_STATUS, &success);
+	glGetProgramInfoLog(shaderProgram, 512, NULL, infoLog);
+
 	if (!success)
 	{
-		glGetProgramInfoLog(shaderProgram, 512, NULL, infoLog);
 		std::cout << "ERROR::SHADER::PROGRAM::" << name << "::LINKING_FAILED" << endl
+				  << infoLog << std::endl;
+	}
+	else
+	{
+		std::cout << "SUCCESS::SHADER::PROGRAM::" << name << "::LINKING" << endl
 				  << infoLog << std::endl;
 	}
 }
@@ -179,7 +188,7 @@ void copyVertexObjectsToVector(const unsigned int vaos[], const unsigned int vbo
 	// copy the VOAs and VBOs
 	VAOs.clear();
 	VBOs.clear();
-	for (int i = 0; i < 2; i++)
+	for (int i = 0; i < sizeof(vaos); i++)
 	{
 		VAOs.emplace_back(vaos[i]);
 		VBOs.emplace_back(vbos[i]);
@@ -189,50 +198,72 @@ void copyVertexObjectsToVector(const unsigned int vaos[], const unsigned int vbo
 void setupTriangles(const bool &wireFrame)
 {
 	unsigned int vertexShader = glCreateShader(GL_VERTEX_SHADER);
-	unsigned int fragmentShaderOrange = glCreateShader(GL_FRAGMENT_SHADER);
-	unsigned int fragmentShaderYellow = glCreateShader(GL_FRAGMENT_SHADER);
-	unsigned int vbos[2], vaos[2]; // for now we hardcode the number
+	unsigned int fragmentShader = glCreateShader(GL_FRAGMENT_SHADER);
+	unsigned int vbos[3], vaos[3]; // for now we hardcode the number
 
-	float firstTriangle[] = {
-		0.5f, 0.5f, 0.0f,	// top right
-		0.5f, -0.5f, 0.0f,	// bottom right
-		-0.5f, -0.5f, 0.0f, // bottom left
-		-0.5f, 0.5f, 0.0f	// top left
+	float leftTriangle[] = {
+		// points		// colors
+		-0.5f, 0.5f, 0.f, 0.f, 1.f, 0.f,   // bottom right
+		-0.75f, 0.5f, 0.f, 0.f, 0.f, 1.f,  // bottom left
+		-0.625f, 0.75f, 0.f, 1.f, 0.f, 0.f // top
 	};
 
-	float secondTriangle[] = {
-		0.0f, -0.5f, 0.0f, // left
-		0.9f, -0.5f, 0.0f, // right
-		0.45f, 0.5f, 0.0f  // top
+	float rightTriangle[] = {
+		// points		// colors
+		0.75f, 0.5f, 0.f, 0.f, 0.f, 1.f,  // bottom right
+		0.5f, 0.5f, 0.f, 1.f, 0.f, 0.f,	  // bottom left
+		0.625f, 0.75f, 0.f, 0.f, 1.f, 0.f // top
+	};
+
+	float bigTriangle[] = {
+		// points		// colors
+		0.5f, 0.5f, 0.f, 1.f, 0.f, 0.f,	 // top right
+		-0.5f, 0.5f, 0.f, 0.f, 1.f, 0.f, // top left
+		0.f, -0.5f, 0.f, 0.f, 0.f, 1.f	 // bottom
 	};
 
 	compileShader(vertexShader, vss, "VERTEX");
-	compileShader(fragmentShaderOrange, fssOrange, "FRAGMENT_ORANGE");
-	compileShader(fragmentShaderYellow, fssYellow, "FRAGMENT_YELLOW");
+	compileShader(fragmentShader, fss, "FRAGMENT");
 
-	linkShaders(vertexShader, fragmentShaderOrange, "ORANGE");
-	linkShaders(vertexShader, fragmentShaderYellow, "YELLOW");
+	// create a program for each triangle (can probably be done differently later)
+	linkShaders(vertexShader, fragmentShader, "1");
+	linkShaders(vertexShader, fragmentShader, "1");
+	linkShaders(vertexShader, fragmentShader, "1");
 
-	glGenVertexArrays(2, vaos);
-	glGenBuffers(2, vbos);
+	glDeleteShader(vertexShader);
+	glDeleteShader(fragmentShader);
+
+	glGenVertexArrays(3, vaos);
+	glGenBuffers(3, vbos);
 
 	copyVertexObjectsToVector(vaos, vbos);
 
 	// first triangle setup
 	glBindVertexArray(vaos[0]);
 	glBindBuffer(GL_ARRAY_BUFFER, vbos[0]);
-	glBufferData(GL_ARRAY_BUFFER, sizeof(firstTriangle), firstTriangle, GL_STATIC_DRAW);
-	glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void *)0); // Vertex attributes stay the same
+	glBufferData(GL_ARRAY_BUFFER, sizeof(leftTriangle), leftTriangle, GL_STATIC_DRAW);
+	glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(float), (void *)0);
 	glEnableVertexAttribArray(0);
-	// glBindVertexArray(0); // no need to unbind at all as we directly bind a different VAO the next few lines
+	glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(float), (void *)(3 * sizeof(float)));
+	glEnableVertexAttribArray(1);
 
 	// second triangle setup
-	glBindVertexArray(VAOs[1]);				// note that we bind to a different VAO now
-	glBindBuffer(GL_ARRAY_BUFFER, VBOs[1]); // and a different VBO
-	glBufferData(GL_ARRAY_BUFFER, sizeof(secondTriangle), secondTriangle, GL_STATIC_DRAW);
-	glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void *)0); // because the vertex data is tightly packed we can also specify 0 as the vertex attribute's stride to let OpenGL figure it out
+	glBindVertexArray(VAOs[1]);
+	glBindBuffer(GL_ARRAY_BUFFER, VBOs[1]);
+	glBufferData(GL_ARRAY_BUFFER, sizeof(rightTriangle), rightTriangle, GL_STATIC_DRAW);
+	glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(float), (void *)0);
 	glEnableVertexAttribArray(0);
-	glBindVertexArray(0);
+	glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(float), (void *)(3 * sizeof(float)));
+	glEnableVertexAttribArray(1);
+
+	// third triangle setup
+	glBindVertexArray(VAOs[2]);
+	glBindBuffer(GL_ARRAY_BUFFER, VBOs[2]);
+	glBufferData(GL_ARRAY_BUFFER, sizeof(bigTriangle), bigTriangle, GL_STATIC_DRAW);
+	glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(float), (void *)0);
+	glEnableVertexAttribArray(0);
+	glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(float), (void *)(3 * sizeof(float)));
+	glEnableVertexAttribArray(1);
 
 	if (wireFrame)
 	{
@@ -242,6 +273,7 @@ void setupTriangles(const bool &wireFrame)
 
 void drawTrangles()
 {
+
 	for (int i = 0; i < sizeof(shaderPrograms); i++)
 	{
 		glUseProgram(shaderPrograms[i]);

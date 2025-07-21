@@ -6,16 +6,24 @@ SRC     := src
 INCLUDE := include
 RES 	:= res
 SHADERS := shaders
+TEXTURES:= textures
+GLFWDLL := lib/glfw-lib/glfw3.dll
 
 LIBRARIES   := lib/glfw-lib/libglfw3dll.a
 EXECUTABLE  := main
 
-.PHONY: copyshaders
+.PHONY: copyshaders copytextures copydlls
 
-all: $(BIN)/$(EXECUTABLE) copyshaders
+all: $(BIN)/$(EXECUTABLE) copydlls copyshaders copytextures
 
 copyshaders:
 	cp ./$(RES)/$(SHADERS)/* ./$(BIN)/$(RES)/$(SHADERS)/ -r -u
+
+copytextures:
+	cp ./$(RES)/$(TEXTURES)/* ./$(BIN)/$(RES)/$(TEXTURES)/ -r -u
+
+copydlls:
+	cp ./$(GLFWDLL) ./$(BIN) -u
 
 run: clean all
 	clear

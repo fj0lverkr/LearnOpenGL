@@ -1,8 +1,11 @@
+#define STB_IMAGE_IMPLEMENTATION
+
 #include <vector>
 #include <map>
 #include <algorithm>
 #include <glad/glad.h>
 #include <GLFW/glfw3.h>
+#include <stb/stb_image.h>
 
 #include "graphics/Color.hpp"
 #include "graphics/Shader.hpp"
@@ -14,12 +17,21 @@ constexpr int GLFW_MAJOR_VERSION = 3;
 constexpr int GLFW_MINOR_VERSION = 3;
 
 const char *SHADERS_BASE_PATH = "./res/shaders/";
-const string TRI_RBW_SHADER = "TriangleRainbowShader";
+const char *TEXTURES_BASE_PATH = "./res/textures/";
+const string TEX_CONTAINER = "TextureContainer";
+
+enum SHADERS
+{
+	SHA_TRI_RBW,
+	SHA_TRI_CON
+};
+
 const Color BG = Color(0.2f, 0.3f, 0.3f);
 
-vector<unsigned int> VAOs, VBOs;
+vector<unsigned int> VAOs, VBOs, EBOs;
 vector<int> pressedKeys;
-map<string, Shader> shaderPrograms;
+map<SHADERS, Shader> shaderPrograms;
+map<string, unsigned int> textures;
 
 // Forward declare functions
 void framebufferSizeCallback(GLFWwindow *window, int width, int height);
@@ -27,10 +39,10 @@ void processWindowInput(GLFWwindow *window);
 void cleanVObjects();
 int exit_clean(int const &code, string const &reason);
 void clearColor(Color c);
-void setupShaders();
-void copyVertexObjectsToVector(const unsigned int vaos[], const unsigned int vbos[], const int numObjects);
+void setupShader(const char *vertexFileName, const char *fragmentFileName, const SHADERS &ShaderId);
+void setupTexture(const char *fileName, const string &textureName);
 void setupTriangles();
-void drawTrangles(Shader &shader);
+void drawTrangles(Shader &shader, const unsigned int &texture);
 
 // main function
 int main()
@@ -60,11 +72,15 @@ int main()
 
 	glfwSetFramebufferSizeCallback(window, framebufferSizeCallback);
 
-	setupShaders();
+	setupTexture("container.jpg", TEX_CONTAINER);
+
+	setupShader("vertex.vs", "fragment.fs", SHADERS::SHA_TRI_RBW);
+	setupShader("vertex_with_texture.vs", "fragment_with_texture.fs", SHADERS::SHA_TRI_CON);
 
 	setupTriangles();
 
-	Shader triangleShader = shaderPrograms.at(TRI_RBW_SHADER);
+	Shader triangleShader = shaderPrograms.at(SHA_TRI_CON);
+	unsigned int texture = textures[TEX_CONTAINER];
 
 	// Render loop
 	while (!glfwWindowShouldClose(window))
@@ -74,7 +90,7 @@ int main()
 
 		// render commands
 		clearColor(BG);
-		drawTrangles(triangleShader);
+		drawTrangles(triangleShader, texture);
 
 		// poll for events and swap buffers
 		glfwPollEvents();
@@ -144,9 +160,14 @@ void cleanVObjects()
 	{
 		glDeleteBuffers(1, &vbo);
 	}
+	for (unsigned int ebo : EBOs)
+	{
+		glDeleteBuffers(1, &ebo);
+	}
 
 	VAOs.clear();
 	VBOs.clear();
+	EBOs.clear();
 }
 
 int exit_clean(int const &code, string const &reason)
@@ -173,91 +194,93 @@ void clearColor(Color c)
 	glClear(GL_COLOR_BUFFER_BIT);
 }
 
-void setupShaders()
+void setupShader(const char *vertexFileName, const char *fragmentFileName, const SHADERS &ShaderId)
 {
-	char *vertexPath = CharUtil::concat(SHADERS_BASE_PATH, "vertex.vs");
-	char *fragmentPath = CharUtil::concat(SHADERS_BASE_PATH, "fragment.fs");
+	char *vertexPath = CharUtil::concat(SHADERS_BASE_PATH, vertexFileName);
+	char *fragmentPath = CharUtil::concat(SHADERS_BASE_PATH, fragmentFileName);
 
-	Shader triangleShader(vertexPath, fragmentPath);
-	shaderPrograms.insert_or_assign(TRI_RBW_SHADER, triangleShader);
+	Shader shader(vertexPath, fragmentPath);
+	shaderPrograms.insert_or_assign(ShaderId, shader);
 }
 
-void copyVertexObjectsToVector(const unsigned int vaos[], const unsigned int vbos[], const int numObjects)
+void setupTexture(const char *fileName, const string &textureName)
 {
-	// copy the VOAs and VBOs
-	cleanVObjects();
+	char *containerPath = CharUtil::concat(TEXTURES_BASE_PATH, fileName);
+	int width, height, nrChannels;
+	unsigned int texture;
+	unsigned char *data = stbi_load(containerPath, &width, &height, &nrChannels, 0);
 
-	for (int i = 0; i < numObjects; i++)
+	glGenTextures(1, &texture);
+	glBindTexture(GL_TEXTURE_2D, texture);
+
+	// set the texture wrapping/filtering options (on the currently bound texture object)
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+
+	if (data)
 	{
-		VAOs.emplace_back(vaos[i]);
-		VBOs.emplace_back(vbos[i]);
+		glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, width, height, 0, GL_RGB, GL_UNSIGNED_BYTE, data);
+		glGenerateMipmap(GL_TEXTURE_2D);
+
+		textures[textureName] = texture;
 	}
+	else
+	{
+		std::cout << "Failed to load texture" << std::endl;
+	}
+	stbi_image_free(data);
 }
 
 void setupTriangles()
 {
-	unsigned int vbos[3], vaos[3]; // for now we hardcode the number
-
-	float leftTriangle[] = {
-		// points		// colors
-		-0.5f, 0.5f, 0.f, 0.f, 1.f, 0.f,   // bottom right
-		-0.75f, 0.5f, 0.f, 0.f, 0.f, 1.f,  // bottom left
-		-0.625f, 0.75f, 0.f, 1.f, 0.f, 0.f // top
+	unsigned int VAO, VBO, EBO;
+	float vertices[] = {
+		// positions      // colors         // texture coords
+		0.5f, 0.5f, 0.0f, 1.0f, 0.0f, 0.0f, 1.0f, 1.0f,	  // top right
+		0.5f, -0.5f, 0.0f, 0.0f, 1.0f, 0.0f, 1.0f, 0.0f,  // bottom right
+		-0.5f, -0.5f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, // bottom left
+		-0.5f, 0.5f, 0.0f, 1.0f, 1.0f, 0.0f, 0.0f, 1.0f	  // top left
 	};
 
-	float rightTriangle[] = {
-		// points		// colors
-		0.75f, 0.5f, 0.f, 0.f, 0.f, 1.f,  // bottom right
-		0.5f, 0.5f, 0.f, 1.f, 0.f, 0.f,	  // bottom left
-		0.625f, 0.75f, 0.f, 0.f, 1.f, 0.f // top
+	unsigned int indices[] = {
+		0, 1, 3, // first triangle
+		1, 2, 3	 // second triangle
 	};
 
-	float bigTriangle[] = {
-		// points		// colors
-		0.5f, 0.5f, 0.f, 1.f, 0.f, 0.f,	 // top right
-		-0.5f, 0.5f, 0.f, 0.f, 1.f, 0.f, // top left
-		0.f, -0.5f, 0.f, 0.f, 0.f, 1.f	 // bottom
-	};
-
-	glGenVertexArrays(3, vaos);
-	glGenBuffers(3, vbos);
-
-	copyVertexObjectsToVector(vaos, vbos, 3);
+	glGenVertexArrays(1, &VAO);
+	glGenBuffers(1, &VBO);
+	glGenBuffers(1, &EBO);
 
 	// first triangle setup
-	glBindVertexArray(vaos[0]);
-	glBindBuffer(GL_ARRAY_BUFFER, vbos[0]);
-	glBufferData(GL_ARRAY_BUFFER, sizeof(leftTriangle), leftTriangle, GL_STATIC_DRAW);
-	glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(float), (void *)0);
-	glEnableVertexAttribArray(0);
-	glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(float), (void *)(3 * sizeof(float)));
-	glEnableVertexAttribArray(1);
+	glBindVertexArray(VAO);
 
-	// second triangle setup
-	glBindVertexArray(VAOs[1]);
-	glBindBuffer(GL_ARRAY_BUFFER, VBOs[1]);
-	glBufferData(GL_ARRAY_BUFFER, sizeof(rightTriangle), rightTriangle, GL_STATIC_DRAW);
-	glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(float), (void *)0);
-	glEnableVertexAttribArray(0);
-	glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(float), (void *)(3 * sizeof(float)));
-	glEnableVertexAttribArray(1);
+	glBindBuffer(GL_ARRAY_BUFFER, VBO);
+	glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_STATIC_DRAW);
 
-	// third triangle setup
-	glBindVertexArray(VAOs[2]);
-	glBindBuffer(GL_ARRAY_BUFFER, VBOs[2]);
-	glBufferData(GL_ARRAY_BUFFER, sizeof(bigTriangle), bigTriangle, GL_STATIC_DRAW);
-	glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(float), (void *)0);
+	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, EBO);
+	glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(indices), indices, GL_STATIC_DRAW);
+
+	glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void *)0);
 	glEnableVertexAttribArray(0);
-	glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(float), (void *)(3 * sizeof(float)));
+	glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void *)(3 * sizeof(float)));
 	glEnableVertexAttribArray(1);
+	glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void *)(6 * sizeof(float)));
+	glEnableVertexAttribArray(2);
+
+	VAOs.emplace_back(VAO);
+	VBOs.emplace_back(VBO);
+	EBOs.emplace_back(EBO);
 }
 
-void drawTrangles(Shader &shader)
+void drawTrangles(Shader &shader, const unsigned int &texture)
 {
 	for (int i = 0; i < sizeof(VAOs); i++)
 	{
 		shader.use();
+		glBindTexture(GL_TEXTURE_2D, texture);
 		glBindVertexArray(VAOs[i]);
-		glDrawArrays(GL_TRIANGLES, 0, 3);
+		glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
 	}
 }

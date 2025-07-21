@@ -1,13 +1,12 @@
-#include <iostream>
 #include <vector>
-#include <cmath>
-#include <cstring>
+#include <map>
 #include <algorithm>
 #include <glad/glad.h>
 #include <GLFW/glfw3.h>
 
 #include "graphics/Color.hpp"
 #include "graphics/Shader.hpp"
+#include "util/Text.hpp"
 
 using namespace std;
 
@@ -15,11 +14,12 @@ constexpr int GLFW_MAJOR_VERSION = 3;
 constexpr int GLFW_MINOR_VERSION = 3;
 
 const char *SHADERS_BASE_PATH = "./res/shaders/";
+const string TRI_RBW_SHADER = "TriangleRainbowShader";
 const Color BG = Color(0.2f, 0.3f, 0.3f);
 
 vector<unsigned int> VAOs, VBOs;
-vector<Shader> shaderPrograms;
 vector<int> pressedKeys;
+map<string, Shader> shaderPrograms;
 
 // Forward declare functions
 void framebufferSizeCallback(GLFWwindow *window, int width, int height);
@@ -64,7 +64,7 @@ int main()
 
 	setupTriangles();
 
-	Shader triangleShader = shaderPrograms[0]; // TODO store/retrieve shaders in a different way
+	Shader triangleShader = shaderPrograms.at(TRI_RBW_SHADER);
 
 	// Render loop
 	while (!glfwWindowShouldClose(window))
@@ -158,7 +158,7 @@ int exit_clean(int const &code, string const &reason)
 
 	cleanVObjects();
 
-	for (Shader shaderProgram : shaderPrograms)
+	for (auto const &[_, shaderProgram] : shaderPrograms)
 	{
 		glDeleteProgram(shaderProgram.programId);
 	}
@@ -175,14 +175,11 @@ void clearColor(Color c)
 
 void setupShaders()
 {
-	char vertexPath[1000], fragmentPath[1000];
-	strcpy(vertexPath, SHADERS_BASE_PATH);
-	strcpy(fragmentPath, SHADERS_BASE_PATH);
-	strcat(vertexPath, "vertex.vs");
-	strcat(fragmentPath, "fragment.fs");
+	char *vertexPath = CharUtil::concat(SHADERS_BASE_PATH, "vertex.vs");
+	char *fragmentPath = CharUtil::concat(SHADERS_BASE_PATH, "fragment.fs");
 
 	Shader triangleShader(vertexPath, fragmentPath);
-	shaderPrograms.emplace_back(triangleShader); // TODO store/retrieve Shaders smarter...
+	shaderPrograms.insert_or_assign(TRI_RBW_SHADER, triangleShader);
 }
 
 void copyVertexObjectsToVector(const unsigned int vaos[], const unsigned int vbos[], const int numObjects)

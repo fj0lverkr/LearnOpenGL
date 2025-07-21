@@ -21,7 +21,7 @@ run: clean all
 	clear
 	./$(BIN)/$(EXECUTABLE)
 
-$(BIN)/$(EXECUTABLE): $(SRC)/*.cpp $(SRC)/graphics/*.cpp $(SRC)/glad/glad.c
+$(BIN)/$(EXECUTABLE): $(SRC)/*.cpp $(SRC)/graphics/*.cpp $(SRC)/util/*.cpp $(SRC)/glad/glad.c
 	$(CXX) -o $@ -I$(INCLUDE) $^ $(LIBRARIES) -lgdi32
 
 clean:
